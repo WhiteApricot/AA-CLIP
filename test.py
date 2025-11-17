@@ -148,6 +148,7 @@ def main():
         device=device,
         pretrained="openai",
         require_pretrained=True,
+        cache_dir="./model",
     )
     clip_model.eval()
     model = AdaptedCLIP(

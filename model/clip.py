@@ -94,6 +94,7 @@ def create_model(
         force_image_size: Optional[Union[int, Tuple[int, int]]] = None,
         output_dict: Optional[bool] = None,
         require_pretrained: bool = False,
+        cache_dir: Optional[str] = None,
         adapter = False,
 ):
 
@@ -117,6 +118,7 @@ def create_model(
             precision=precision,
             device=device,
             jit=jit,
+            cache_dir=cache_dir,
         )
         state_dict = model_pre.state_dict()
 

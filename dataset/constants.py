@@ -1,4 +1,4 @@
-BASE_PATH = "/data/wenxinma"
+BASE_PATH = "./"
 DATA_PATH = {
     "Brain": f"{BASE_PATH}/data/MedAD/Brain_AD",
     "Liver": f"{BASE_PATH}/data/MedAD/Liver_AD",
@@ -11,6 +11,8 @@ DATA_PATH = {
     "MPDD": f"{BASE_PATH}/data/MPDD",
     "MVTec": f"{BASE_PATH}/data/mvtec_ad",
     "VisA": f"{BASE_PATH}/data/VisA_20220922",
+    "MyRoadCrack_Train": f"{BASE_PATH}/data/MyRoadCrack_Train",
+    "MyRoadCrack_Test": f"{BASE_PATH}/data/MyRoadCrack_Test",
 }
 
 CLASS_NAMES = {
@@ -61,6 +63,8 @@ CLASS_NAMES = {
         "bracket_black",
     ],
     "BTAD": ["01", "02", "03"],
+    "MyRoadCrack_Train": ["road_crack"],
+    "MyRoadCrack_Test": ["road_crack"],
 }
 DOMAINS = {
     "VisA": "Industrial",
@@ -74,6 +78,8 @@ DOMAINS = {
     "Colon_colonDB": "Medical",
     "Colon_Kvasir": "Medical",
     "Colon_cvc300": "Medical",
+    "MyRoadCrack_Train": "Industrial",
+    "MyRoadCrack_Test": "Industrial",
 }
 REAL_NAMES = {
     "Brain": {"Brain": "scan"},
@@ -130,6 +136,12 @@ REAL_NAMES = {
         "01": "Bright concentric rings in neon yellow and blue tones against a dark blue background, resembling a stylized wave or energy field radiating outward.",
         "02": "vertical fabric lines in warm, dusty pink and beige tones",
         "03": "oval concentric circular rings in gradient shades of blue and white",
+    },
+    "MyRoadCrack_Train": {
+        "road_crack": "a photo of a road with a crack"
+    },
+    "MyRoadCrack_Test": {
+        "road_crack": "a photo of a road with a crack"
     },
 }
 PROMPTS = {

@@ -248,6 +248,7 @@ def main():
         device=device,
         pretrained="openai",
         require_pretrained=True,
+        cache_dir="./model",
     )
     clip_model.eval()
     model = AdaptedCLIP(
@@ -301,13 +302,13 @@ def main():
     kwargs = {"num_workers": 4, "pin_memory": True} if use_cuda else {}
     logger.info("loading dataset ...")
     text_dataset, image_dataset = get_dataset(
-        args.dataset,
-        args.img_size,
-        args.training_mode,
-        args.shot,
-        "train",
-        logger,
-    )
+    "MyRoadCrack_Train",
+    args.img_size,
+    None,
+    args.shot,
+    "train",
+    logger=logger
+)
     text_dataloader = torch.utils.data.DataLoader(
         text_dataset, batch_size=args.text_batch_size, shuffle=True, **kwargs
     )

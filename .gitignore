@@ -1,5 +1,9 @@
 *.pth
 *.pt
+CRACK500FINAL/
+model/ViT-L-14-336px.pt
+data/
+dataset/
 ckpt/
 final/
 finalOct25/
