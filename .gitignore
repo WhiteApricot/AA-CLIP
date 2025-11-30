@@ -2,6 +2,7 @@
 *.pt
 CRACK500FINAL/
 model/ViT-L-14-336px.pt
+results/
 data/
 dataset/
 ckpt/

@@ -36,19 +36,19 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 
 def train_text_adapter(
-    adapted_model: nn.Module,
-    clip_surgery: nn.Module,
-    text_norm_weight: float,
-    train_loader: DataLoader,
-    optimizer: torch.optim.Optimizer,
-    # scheduler: torch.optim.lr_scheduler,
-    device: str,
-    start_epoch: int,
-    save_path: str,
-    text_epoch: int,
-    dataset_name: str,
-    img_size: int,
-    logger: logging.Logger,
+        adapted_model: nn.Module,
+        clip_surgery: nn.Module,
+        text_norm_weight: float,
+        train_loader: DataLoader,
+        optimizer: torch.optim.Optimizer,
+        # scheduler: torch.optim.lr_scheduler,
+        device: str,
+        start_epoch: int,
+        save_path: str,
+        text_epoch: int,
+        dataset_name: str,
+        img_size: int,
+        logger: logging.Logger,
 ):
     for epoch in range(start_epoch, text_epoch):
         logger.info(f"training text epoch {epoch}:")
@@ -89,10 +89,10 @@ def train_text_adapter(
                 patch_preds = calculate_similarity_map(f, epoch_text_feature, img_size)
                 loss = calculate_seg_loss(patch_preds, mask)
                 orthogonal_loss = (
-                    (epoch_text_feature[:, :, 0] * epoch_text_feature[:, :, 1])
-                    .sum(1)
-                    .mean()
-                ) ** 2
+                                      (epoch_text_feature[:, :, 0] * epoch_text_feature[:, :, 1])
+                                      .sum(1)
+                                      .mean()
+                                  ) ** 2
                 loss += orthogonal_loss * text_norm_weight
             # backward
             optimizer.zero_grad()
@@ -115,17 +115,17 @@ def train_text_adapter(
 
 
 def train_image_adapter(
-    model: nn.Module,
-    text_embeddings: torch.Tensor,
-    train_loader: DataLoader,
-    optimizer: torch.optim.Optimizer,
-    scheduler: torch.optim.lr_scheduler,
-    device: str,
-    start_epoch: int,
-    save_path: str,
-    image_epoch: int,
-    img_size: int,
-    logger: logging.Logger,
+        model: nn.Module,
+        text_embeddings: torch.Tensor,
+        train_loader: DataLoader,
+        optimizer: torch.optim.Optimizer,
+        scheduler: torch.optim.lr_scheduler,
+        device: str,
+        start_epoch: int,
+        save_path: str,
+        image_epoch: int,
+        img_size: int,
+        logger: logging.Logger,
 ):
     for epoch in range(start_epoch, image_epoch):
         logger.info(f"training image epoch {epoch}:")
@@ -187,7 +187,16 @@ def main():
     parser.add_argument("--surgery_until_layer", type=int, default=20)
     parser.add_argument("--relu", action="store_true", help="use relu after projection")
     # training
-    parser.add_argument("--dataset", type=str, default="VisA")
+
+    # =================================================================================
+    # V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V
+    # 修复 1/2: 将默认数据集更改为你的数据集
+    parser.add_argument(
+        "--dataset", type=str, default="MyRoadCrack_Train"
+    )
+    # ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^
+    # =================================================================================
+
     parser.add_argument(
         "--training_mode",
         type=str,
@@ -301,14 +310,21 @@ def main():
         args.shot = -1
     kwargs = {"num_workers": 4, "pin_memory": True} if use_cuda else {}
     logger.info("loading dataset ...")
+
+    # =================================================================================
+    # V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V V
+    # 修复 2/2: 将 get_dataset 调用更改为使用 args.dataset 变量
     text_dataset, image_dataset = get_dataset(
-    "MyRoadCrack_Train",
-    args.img_size,
-    None,
-    args.shot,
-    "train",
-    logger=logger
-)
+        args.dataset,  # <-- 使用  args.dataset 变量
+        args.img_size,
+        None,
+        args.shot,
+        "train",
+        logger=logger
+    )
+    # ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^ ^
+    # =================================================================================
+
     text_dataloader = torch.utils.data.DataLoader(
         text_dataset, batch_size=args.text_batch_size, shuffle=True, **kwargs
     )
