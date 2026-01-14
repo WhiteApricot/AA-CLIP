@@ -1,6 +1,7 @@
 *.pth
 *.pt
 CRACK500FINAL/
+hubei/
 model/ViT-L-14-336px.pt
 results/
 data/
