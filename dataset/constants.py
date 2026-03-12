@@ -13,6 +13,11 @@ DATA_PATH = {
     "VisA": f"{BASE_PATH}/data/VisA_20220922",
     "MyRoadCrack_Train": f"{BASE_PATH}/data/MyRoadCrack_Train",
     "MyRoadCrack_Test": f"{BASE_PATH}/data/MyRoadCrack_Test",
+    "DeepCrack_Train": f"{BASE_PATH}/data/DeepCrack_Train",
+    "DeepCrack_Test": f"{BASE_PATH}/data/DeepCrack_Test",
+    "HubeiDown_Train": f"{BASE_PATH}/data/HubeiDown_Train",
+    "G45_Train": f"{BASE_PATH}/G45data/train",
+    "G45_mask": f"{BASE_PATH}/data/G45_crack_mask"
 }
 
 CLASS_NAMES = {
@@ -65,6 +70,11 @@ CLASS_NAMES = {
     "BTAD": ["01", "02", "03"],
     "MyRoadCrack_Train": ["road_crack"],
     "MyRoadCrack_Test": ["road_crack"],
+    "DeepCrack_Train": ["deep_crack"],
+    "DeepCrack_Test": ["deep_crack"],
+    "HubeiDown_Train": ["hubei_down"],
+    "G45_Train": ["G45"],
+    "G45_mask": ["road"],
 }
 DOMAINS = {
     "VisA": "Industrial",
@@ -80,6 +90,11 @@ DOMAINS = {
     "Colon_cvc300": "Medical",
     "MyRoadCrack_Train": "Industrial",
     "MyRoadCrack_Test": "Industrial",
+    "DeepCrack_Train": "Industrial",
+    "DeepCrack_Test": "Industrial",
+    "HubeiDown_Train": "Industrial",
+    "G45_Train": "Industrial",
+    "G45_mask": "Industrial",
 }
 REAL_NAMES = {
     "Brain": {"Brain": "scan"},
@@ -142,6 +157,21 @@ REAL_NAMES = {
     },
     "MyRoadCrack_Test": {
         "road_crack": "a photo of a road with a crack"
+    },
+    "DeepCrack_Train": {
+        "deep_crack": "a photo of a road with a crack"
+    },
+    "DeepCrack_Test": {
+        "deep_crack": "a photo of a road with a crack"
+    },
+    "HubeiDown_Train": {
+        "hubei_down": "a photo of a road with a crack"
+    },
+    "G45_Train": {
+        "G45": "a photo of a road with a crack"
+    },
+    "G45_mask": {
+        "road": "a photo of a road with a crack"
     },
 }
 PROMPTS = {

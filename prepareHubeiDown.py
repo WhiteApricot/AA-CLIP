@@ -7,9 +7,10 @@ import numpy as np
 from tqdm import tqdm
 
 # ================= 配置区域 =================
-# 源数据路径 (请确保这些路径下有图片)
+# 源数据路径
 SOURCE_CROPS_DIR = "hubei/crops"
 SOURCE_ALL_IMGS_DIR = "hubei/all_Imgs"
+SOURCE_CRACK_TEST_DIR = "hubei/CrackTest"  # [新增] 指定新的测试集源文件夹
 
 # 目标数据目录
 DATA_ROOT = "data"
@@ -25,10 +26,12 @@ TEST_META_DIR = os.path.join(META_ROOT, "HubeiDown_Test")
 CLASS_NAME = "road"
 
 # 图像增强参数
-# amount: 锐化强度 (1.0 ~ 2.0 通常比较合适，过高会引入噪点)
-# sigma: 高斯模糊半径，控制增强的频率范围
 ENHANCE_AMOUNT = 2.0
 ENHANCE_SIGMA = 2.0
+
+# 对比度增强参数
+CONTRAST_ALPHA = 2.0
+CONTRAST_BETA = 128 * (1 - CONTRAST_ALPHA)
 
 
 # ===========================================
@@ -52,8 +55,7 @@ def get_image_files(directory):
 
 def enhance_and_save(src_path, dst_path):
     """
-    读取图像，应用高频增强 (Unsharp Masking)，然后保存
-    公式: Sharpened = Original + (Original - Blurred) * Amount
+    读取图像，应用高频增强 (Unsharp Masking)，大幅增加对比度，然后保存
     """
     try:
         # 1. 读取图像
@@ -62,16 +64,16 @@ def enhance_and_save(src_path, dst_path):
             print(f"Warning: Failed to read {src_path}")
             return False
 
-        # 2. 高频增强处理
-        # 高斯模糊，获取低频分量
-        blurred = cv2.GaussianBlur(img, (0, 0), sigmaX=ENHANCE_SIGMA)
+        # # 2. 高频增强处理 (锐化)
+        # blurred = cv2.GaussianBlur(img, (0, 0), sigmaX=ENHANCE_SIGMA)
+        # sharpened = cv2.addWeighted(img, 1.0 + ENHANCE_AMOUNT, blurred, -ENHANCE_AMOUNT, 0)
+        #
+        # # 3. 大幅增加对比度
+        # high_contrast_img = cv2.convertScaleAbs(sharpened, alpha=CONTRAST_ALPHA, beta=CONTRAST_BETA)
 
-        # 计算锐化后的图像： 原图 * (1 + amount) + 模糊图 * (-amount)
-        # 例如 amount=1.5 -> 原图 * 2.5 - 模糊图 * 1.5
-        sharpened = cv2.addWeighted(img, 1.0 + ENHANCE_AMOUNT, blurred, -ENHANCE_AMOUNT, 0)
-
-        # 3. 保存图像
-        cv2.imwrite(dst_path, sharpened)
+        # 4. 保存图像
+        high_contrast_img = img
+        cv2.imwrite(dst_path, high_contrast_img)
         return True
     except Exception as e:
         print(f"Error processing {src_path}: {e}")
@@ -82,8 +84,6 @@ def create_jsonl(data_list, output_path, is_train=True):
     """生成 JSONL 元数据文件"""
     with open(output_path, 'w') as f:
         for filename in data_list:
-            # 构造 JSONL 行
-            # 注意：此处假设没有 Ground Truth Mask，label 设为 0
             entry = {
                 "image_path": filename,
                 "mask_path": None,
@@ -100,63 +100,74 @@ def main():
     # ==========================================
     # 1. 处理训练集 (Crops) - 增强并保存
     # ==========================================
-    print(f"\nProcessing Training Data (Crops) with High-Frequency Enhancement...")
+    print(f"\nProcessing Training Data (Crops) with High-Frequency Enhancement & High Contrast...")
     print(f"Enhancement Params: Amount={ENHANCE_AMOUNT}, Sigma={ENHANCE_SIGMA}")
+    print(f"Contrast Params: Alpha={CONTRAST_ALPHA}, Beta={CONTRAST_BETA}")
 
     crop_files = get_image_files(SOURCE_CROPS_DIR)
     valid_train_files = []
-    exclude_filenames = set()
+    # exclude_filenames = set() # [修改] 原逻辑需要，现暂时注释掉不需要的部分
 
     for f in tqdm(crop_files, desc="Enhancing Train Imgs"):
         src = os.path.join(SOURCE_CROPS_DIR, f)
         dst = os.path.join(TRAIN_DIR, f)
 
-        # 执行增强并保存
         if enhance_and_save(src, dst):
             valid_train_files.append(f)
 
-            # 解析原图文件名以供测试集排除使用
-            # 假设文件名格式为 xxx_crop.jpg -> 原图为 xxx.jpg
-            original_name = f.replace("_crop", "")
-            exclude_filenames.add(original_name)
+            # [修改] 原逻辑：用于记录原图名以防止测试集数据泄露
+            # original_name = f.replace("_crop", "")
+            # exclude_filenames.add(original_name)
 
     # 生成训练集元数据
     create_jsonl(valid_train_files, os.path.join(TRAIN_META_DIR, "full-shot.jsonl"))
-    # 复制一份作为 few-shot 兼容
     shutil.copyfile(os.path.join(TRAIN_META_DIR, "full-shot.jsonl"),
                     os.path.join(TRAIN_META_DIR, "32-shot.jsonl"))
 
     # ==========================================
-    # 2. 处理测试集 (All Imgs) - 筛选、增强并保存
+    # 2. 处理测试集 (CrackTest) - 全量增强并保存
     # ==========================================
-    print("\nProcessing Test Data (Random Selection with Enhancement)...")
-    all_img_files = get_image_files(SOURCE_ALL_IMGS_DIR)
+    print("\nProcessing Test Data (From hubei/CrackTest)...")
 
-    # 筛选候选图片（排除已经在训练集中的原图）
-    candidates = [f for f in all_img_files if f not in exclude_filenames]
+    # ------------------ [原逻辑开始：已注释] ------------------
+    # print("\nProcessing Test Data (Random Selection with Enhancement)...")
+    # all_img_files = get_image_files(SOURCE_ALL_IMGS_DIR)
+    #
+    # # 筛选候选图片（排除已经在训练集中的原图）
+    # candidates = [f for f in all_img_files if f not in exclude_filenames]
+    #
+    # print(f"Total images: {len(all_img_files)}, Excluded: {len(exclude_filenames)}, Candidates: {len(candidates)}")
+    #
+    # # 随机选择 300 张 (如果不足则全选)
+    # if len(candidates) < 300:
+    #     print(f"Warning: Only {len(candidates)} images available for test, selecting all.")
+    #     selected_test_files = candidates
+    # else:
+    #     selected_test_files = random.sample(candidates, 300)
+    # ------------------ [原逻辑结束] ------------------
 
-    print(f"Total images: {len(all_img_files)}, Excluded: {len(exclude_filenames)}, Candidates: {len(candidates)}")
-
-    # 随机选择 300 张 (如果不足则全选)
-    if len(candidates) < 300:
-        print(f"Warning: Only {len(candidates)} images available for test, selecting all.")
-        selected_test_files = candidates
-    else:
-        selected_test_files = random.sample(candidates, 300)
+    # ------------------ [新逻辑开始] ------------------
+    # 直接获取 CrackTest 目录下的所有图片
+    selected_test_files = get_image_files(SOURCE_CRACK_TEST_DIR)
+    print(f"Found {len(selected_test_files)} images in {SOURCE_CRACK_TEST_DIR} for testing.")
+    # ------------------ [新逻辑结束] ------------------
 
     valid_test_files = []
     for f in tqdm(selected_test_files, desc="Enhancing Test Imgs"):
-        src = os.path.join(SOURCE_ALL_IMGS_DIR, f)
+        # [修改] 源路径改为 CrackTest
+        # src = os.path.join(SOURCE_ALL_IMGS_DIR, f) # 原路径
+        src = os.path.join(SOURCE_CRACK_TEST_DIR, f)  # 新路径
+
         dst = os.path.join(TEST_DIR, f)
 
-        # 执行增强并保存
+        # 执行增强并保存 (保持相同的处理逻辑)
         if enhance_and_save(src, dst):
             valid_test_files.append(f)
 
     # 生成测试集元数据
     create_jsonl(valid_test_files, os.path.join(TEST_META_DIR, "full-shot.jsonl"), is_train=False)
 
-    print("\nDone! Data preparation with enhancement complete.")
+    print("\nDone! Data preparation with enhancement and high contrast complete.")
     print(f"Training images saved to: {TRAIN_DIR}")
     print(f"Testing images saved to: {TEST_DIR}")
 
