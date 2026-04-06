@@ -19,6 +19,9 @@ rebuttal/
 sup/
 visualize/
 */*.pt
+crack-data/
+*.pdf
+*.zip
 
 *.npy
 

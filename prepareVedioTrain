@@ -1,0 +1,110 @@
+import os
+import shutil
+import random
+import json
+import cv2
+import numpy as np
+from glob import glob
+from tqdm import tqdm
+
+def main():
+    # ================= 配置区域 =================
+    # 源数据路径
+    src_dir = os.path.join("crack-data", "marked", "train")
+    
+    # 设定新数据集的名称与类别
+    dataset_name = "videoTrain"
+    class_name = "road"
+    
+    # 目标数据目录
+    data_root = "data"
+    target_data_dir = os.path.join(data_root, dataset_name)
+    img_dst = os.path.join(target_data_dir, "image")
+    mask_dst = os.path.join(target_data_dir, "mask")
+    
+    # 目标元数据目录 (严格遵循你代码库的规范)
+    meta_root = os.path.join("dataset", "metadata")
+    target_meta_dir = os.path.join(meta_root, dataset_name)
+    
+    target_samples = 80
+    # ===========================================
+
+    # 1. 创建并清空目标目录
+    print(f"初始化目标数据目录: {target_data_dir}")
+    if os.path.exists(target_data_dir):
+        shutil.rmtree(target_data_dir)
+    os.makedirs(img_dst, exist_ok=True)
+    os.makedirs(mask_dst, exist_ok=True)
+    
+    print(f"初始化目标元数据目录: {target_meta_dir}")
+    if os.path.exists(target_meta_dir):
+        shutil.rmtree(target_meta_dir)
+    os.makedirs(target_meta_dir, exist_ok=True)
+
+    # 2. 遍历源目录
+    json_files = glob(os.path.join(src_dir, "**", "*.json"), recursive=True)
+    valid_pairs = []
+    
+    for json_path in json_files:
+        img_path = json_path.rsplit('.', 1)[0] + '.jpg'
+        if os.path.exists(img_path):
+            valid_pairs.append((img_path, json_path))
+
+    # 3. 随机抽取 80 张
+    sample_size = min(target_samples, len(valid_pairs))
+    sampled_pairs = random.sample(valid_pairs, sample_size)
+
+    # 4. 处理图像与掩码
+    metadata_entries = []
+    
+    for img_path, json_path in tqdm(sampled_pairs, desc="Generating Images and Masks"):
+        base_name = os.path.basename(img_path)
+        mask_name = base_name.rsplit('.', 1)[0] + '.png'
+        
+        # 复制原图
+        shutil.copy(img_path, os.path.join(img_dst, base_name))
+        
+        # 解析 JSON 生成掩码
+        with open(json_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+            
+        h = data.get("imageHeight")
+        w = data.get("imageWidth")
+        if h is None or w is None:
+            temp_img = cv2.imread(img_path)
+            h, w = temp_img.shape[:2]
+
+        mask = np.zeros((h, w), dtype=np.uint8)
+        
+        for shape in data.get("shapes", []):
+            if shape.get("shape_type") == "polygon":
+                points = shape.get("points", [])
+                if len(points) > 0:
+                    pts = np.array(points, dtype=np.int32)
+                    cv2.fillPoly(mask, [pts], 255)
+                    
+        cv2.imwrite(os.path.join(mask_dst, mask_name), mask)
+        
+        # 组装满足 BaseDataset 解析的字段 (这里的路径应是相对 data_path 的相对路径)
+        metadata_entries.append({
+            "image_path": f"image/{base_name}",
+            "mask_path": f"mask/{mask_name}",
+            "label": 1,   # 1 代表存在异常/裂缝，这会触发 dataset 加载 mask
+            "class_name": class_name
+        })
+
+    # 5. 生成 JSONL 文件 (参考 prepareHubeiDown.py 的做法)
+    full_shot_path = os.path.join(target_meta_dir, "full-shot.jsonl")
+    with open(full_shot_path, 'w', encoding='utf-8') as f:
+        for entry in metadata_entries:
+            f.write(json.dumps(entry) + "\n")
+            
+    # 为了兼容 few_shot 模式，也拷贝一份作为 32-shot.jsonl
+    shutil.copyfile(full_shot_path, os.path.join(target_meta_dir, "32-shot.jsonl"))
+        
+    print(f"\n处理完成！生成 {sample_size} 张图片。")
+    print(f"数据存放于: {target_data_dir}")
+    print(f"元数据存放于: {target_meta_dir} (已生成 full-shot.jsonl 和 32-shot.jsonl)")
+
+if __name__ == "__main__":
+    main()

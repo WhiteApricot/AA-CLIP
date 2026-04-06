@@ -17,7 +17,8 @@ DATA_PATH = {
     "DeepCrack_Test": f"{BASE_PATH}/data/DeepCrack_Test",
     "HubeiDown_Train": f"{BASE_PATH}/data/HubeiDown_Train",
     "G45_Train": f"{BASE_PATH}/G45data/train",
-    "G45_mask": f"{BASE_PATH}/data/G45_crack_mask"
+    "G45_mask": f"{BASE_PATH}/data/G45_crack_mask",
+    "videoTrain": f"{BASE_PATH}/data/videoTrain",
 }
 
 CLASS_NAMES = {
@@ -75,7 +76,9 @@ CLASS_NAMES = {
     "HubeiDown_Train": ["hubei_down"],
     "G45_Train": ["G45"],
     "G45_mask": ["road"],
+    "videoTrain": ["road"],
 }
+
 DOMAINS = {
     "VisA": "Industrial",
     "BTAD": "Industrial",
@@ -96,6 +99,7 @@ DOMAINS = {
     "G45_Train": "Industrial",
     "G45_mask": "Industrial",
 }
+
 REAL_NAMES = {
     "Brain": {"Brain": "scan"},
     "Liver": {"Liver": "scan"},
@@ -152,39 +156,51 @@ REAL_NAMES = {
         "02": "vertical fabric lines in warm, dusty pink and beige tones",
         "03": "oval concentric circular rings in gradient shades of blue and white",
     },
+    # 【核心修改点 1】：修正所有道路类数据集的基准名词为纯净的“沥青路面”
     "MyRoadCrack_Train": {
-        "road_crack": "a photo of a road with a crack"
+        "road_crack": "asphalt road surface"
     },
     "MyRoadCrack_Test": {
-        "road_crack": "a photo of a road with a crack"
+        "road_crack": "asphalt road surface"
     },
     "DeepCrack_Train": {
-        "deep_crack": "a photo of a road with a crack"
+        "deep_crack": "asphalt road surface"
     },
     "DeepCrack_Test": {
-        "deep_crack": "a photo of a road with a crack"
+        "deep_crack": "asphalt road surface"
     },
     "HubeiDown_Train": {
-        "hubei_down": "a photo of a road with a crack"
+        "hubei_down": "asphalt road surface"
     },
     "G45_Train": {
-        "G45": "a photo of a road with a crack"
+        "G45": "asphalt road surface"
     },
     "G45_mask": {
-        "road": "a photo of a road with a crack"
+        "road": "asphalt road surface"
+    },
+    "videoTrain": {
+        "road": "asphalt road surface"
     },
 }
+
+# 【核心修改点 2】：全面扩充和细化道路场景的正常与异常描述
 PROMPTS = {
-    "prompt_normal": ["{}", "a {}", "the {}"],
+    "prompt_normal": [
+        "{}",
+        "a {} with standard lane markings",  # 保留车道线特征
+        "a {} with clear road edges",        # 保留边线特征
+        "texture of a normal {}",            # 保留纹理特征
+        "an intact {} without any damage"
+    ],
     "prompt_abnormal": [
         "a damaged {}",
-        "a broken {}",
-        "a {} with flaw",
-        "a {} with defect",
-        "a {} with damage",
+        "a {} with a severe crack",
+        "a {} with longitudinal and transverse cracks", # 合并纵向和横向裂缝
+        "a {} with alligator cracking",                 # 网裂/龟裂
+        "a {} with asphalt patches",                    # 沥青修补
+        "a {} with potholes and rutting"                # 合并坑槽与车辙
     ],
     "prompt_templates": [
-        "{}.",
-        "a photo of {}.",
+        "a photo of {}.",   # 只保留这 1 个最常用、泛化性最好的模板
     ],
 }

@@ -17,8 +17,7 @@ from torchvision import transforms
 import dataset.constants
 
 # 1. 注册数据路径
-# dataset.constants.DATA_PATH["HubeiDown_Test"] = "data/G45_crack_mask/test_image"
-dataset.constants.DATA_PATH["HubeiDown_Test"] = "data/G45_Test"
+dataset.constants.DATA_PATH["HubeiDown_Test"] = "data/G45_crack_mask/test_image"
 # 2. 注册类别名称
 dataset.constants.CLASS_NAMES["HubeiDown_Test"] = ["road"]
 # 3. 注册真实名称
@@ -39,13 +38,13 @@ from test import add_header_to_image
 
 class DirectFolderDataset(Dataset):
     """
-    自定义数据集类：读取图像，如果宽高小于1036，则插值到至少1036
+    修改后的数据集类：直接将图像统一缩放到 518x518 送入模型
     """
 
-    def __init__(self, root_dir, class_name):
+    def __init__(self, root_dir, class_name, img_size=518):
         self.root_dir = root_dir
         self.class_name = class_name
-        self.min_size = 1036
+        self.img_size = img_size
 
         extensions = ('*.jpg', '*.jpeg', '*.png', '*.bmp')
         self.image_files = []
@@ -58,8 +57,9 @@ class DirectFolderDataset(Dataset):
         if len(self.image_files) == 0:
             raise RuntimeError(f"No images found in {root_dir}")
 
-        # 仅保留基础的 ToTensor 和 Normalize，Resize 动态处理
+        # 直接 Resize 到 518x518
         self.base_transform = transforms.Compose([
+            transforms.Resize((self.img_size, self.img_size), interpolation=transforms.InterpolationMode.BICUBIC),
             transforms.ToTensor(),
             transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
         ])
@@ -74,19 +74,12 @@ class DirectFolderDataset(Dataset):
         try:
             image = Image.open(img_path).convert("RGB")
             orig_W, orig_H = image.size
-
-            # 保证宽高至少为 1036
-            new_W = max(orig_W, self.min_size)
-            new_H = max(orig_H, self.min_size)
-
-            if new_W != orig_W or new_H != orig_H:
-                image = image.resize((new_W, new_H), Image.BICUBIC)
-
+            # 直接转换为 518x518 的 Tensor
             image_tensor = self.base_transform(image)
         except Exception as e:
             print(f"Error loading {img_path}: {e}")
-            image_tensor = torch.zeros((3, self.min_size, self.min_size))
-            orig_W, orig_H, new_W, new_H = self.min_size, self.min_size, self.min_size, self.min_size
+            image_tensor = torch.zeros((3, self.img_size, self.img_size))
+            orig_W, orig_H = self.img_size, self.img_size
 
         return {
             "image": image_tensor,
@@ -97,60 +90,29 @@ class DirectFolderDataset(Dataset):
         }
 
 
-def get_sliding_window_predictions(model, class_text_embeddings, image_tensor, img_size=518, stride=259):
+def get_single_prediction_with_erosion(model, class_text_embeddings, image_tensor, orig_H, orig_W, img_size=518):
     """
-    核心滑动窗口逻辑 (带 50% 重叠率)
+    仅输入 518x518 进行预测，缩放回原图大小后，进行 3 次形态学腐蚀
     """
-    B, C, H, W = image_tensor.shape
-    device = image_tensor.device
+    # 1. 前向传播提取特征
+    features, _ = model(image_tensor)
+    patch_preds = 0
+    for f in features:
+        patch_preds += calculate_similarity_map(f, class_text_embeddings, img_size)
+    patch_preds = patch_preds / len(features)
 
-    prob_map = torch.zeros((H, W), device=device)
-    count_map = torch.zeros((H, W), device=device)
+    # 2. 提取异常概率，shape: [518, 518]
+    prob = torch.softmax(patch_preds, dim=1)[:, 1, :, :].squeeze(0).cpu().numpy()
 
-    h_steps = list(range(0, H - img_size + 1, stride))
-    if H - img_size > 0 and h_steps[-1] != H - img_size:
-        h_steps.append(H - img_size)
+    # 3. 恢复到原图分辨率
+    prob_resized = cv2.resize(prob, (orig_W, orig_H))
 
-    w_steps = list(range(0, W - img_size + 1, stride))
-    if W - img_size > 0 and w_steps[-1] != W - img_size:
-        w_steps.append(W - img_size)
+    # 4. 形态学腐蚀 (与 CrackCLIP 保持一致：3x3 核，3 次迭代)
+    # cv2.erode 支持对 float32 的概率图操作，相当于局部最小值滤波，能有效收缩高概率的裂缝区域
+    kernel = np.ones((3, 3), np.uint8)
+    prob_eroded = cv2.erode(prob_resized, kernel, iterations=0)
 
-    for y in h_steps:
-        for x in w_steps:
-            patch = image_tensor[:, :, y:y + img_size, x:x + img_size]
-
-            patch_features, _ = model(patch)
-            patch_preds = 0
-            for f in patch_features:
-                patch_preds += calculate_similarity_map(f, class_text_embeddings, img_size)
-            patch_preds = patch_preds / len(patch_features)
-
-            prob = torch.softmax(patch_preds, dim=1)[:, 1, :, :].squeeze(0)
-
-            prob_map[y:y + img_size, x:x + img_size] += prob
-            count_map[y:y + img_size, x:x + img_size] += 1
-
-    prob_map = prob_map / torch.clamp(count_map, min=1.0)
-    return prob_map.cpu().numpy()
-
-
-def get_global_prediction(model, class_text_embeddings, image_tensor, img_size=518):
-    """
-    将整图压缩至模型输入尺寸进行全局预测，提取全局上下文
-    """
-    # 强制将大图插值缩小到 518x518
-    global_tensor = F.interpolate(image_tensor, size=(img_size, img_size), mode='bilinear', align_corners=False)
-
-    global_features, _ = model(global_tensor)
-    global_preds = 0
-    for f in global_features:
-        global_preds += calculate_similarity_map(f, class_text_embeddings, img_size)
-    global_preds = global_preds / len(global_features)
-
-    # 提取异常概率 (shape: [img_size, img_size])
-    prob = torch.softmax(global_preds, dim=1)[:, 1, :, :].squeeze(0)
-
-    return prob.cpu().numpy()
+    return prob_eroded
 
 
 def visualize_custom_hubei(
@@ -160,7 +122,10 @@ def visualize_custom_hubei(
         dataset_name: str,
         class_name: str,
 ):
-    save_dir = os.path.join("results", "G45_windows")
+    """
+    可视化逻辑保持不变
+    """
+    save_dir = os.path.join("results", "Hubei_mask_eroded")
     os.makedirs(save_dir, exist_ok=True)
     print(f"Saving visualization results to: {save_dir} ...")
 
@@ -191,7 +156,7 @@ def visualize_custom_hubei(
         mask_pred_vis = cv2.cvtColor(mask_pred, cv2.COLOR_GRAY2BGR)
 
         original_vis = add_header_to_image(original_image, "Original")
-        heatmap_vis = add_header_to_image(pred_vis, "Global Heatmap")
+        heatmap_vis = add_header_to_image(pred_vis, "Eroded Heatmap")
         mask_vis = add_header_to_image(mask_pred_vis, "Predicted Mask")
 
         combined_image = np.hstack([original_vis, heatmap_vis, mask_vis])
@@ -205,7 +170,7 @@ def main():
     parser.add_argument("--img_size", type=int, default=518)
     parser.add_argument("--relu", action="store_true")
     parser.add_argument("--dataset", type=str, default="HubeiDown_Test")
-    parser.add_argument("--save_path", type=str, default="ckpt/G45_Std")
+    parser.add_argument("--save_path", type=str, default="ckpt/G45_mask")
 
     parser.add_argument("--shot", type=int, default=32)
     parser.add_argument("--batch_size", type=int, default=1)
@@ -279,9 +244,11 @@ def main():
     data_dir = dataset.constants.DATA_PATH[args.dataset]
     logger.info(f"Scanning images directly from: {data_dir}")
 
+    # 数据集直接 resize 到 518x518
     test_dataset = DirectFolderDataset(
         root_dir=data_dir,
-        class_name="road"
+        class_name="road",
+        img_size=args.img_size
     )
     image_datasets = {"road": test_dataset}
     logger.info(f"Found {len(test_dataset)} images.")
@@ -308,38 +275,22 @@ def main():
         with torch.no_grad():
             class_text_embeddings = text_embeddings[class_name]
 
-            for batch in tqdm(image_dataloader, desc="Global-Local Predicting"):
+            # 改为简单的单次前向推理遍历
+            for batch in tqdm(image_dataloader, desc="Predicting (518x518 + Erosion)"):
                 image_tensor = batch["image"].to(device)
                 orig_W = batch["orig_W"][0].item()
                 orig_H = batch["orig_H"][0].item()
                 file_name = batch["file_name"][0]
 
-                # --------------------------------------------------------------
-                # 步骤 1: 滑动窗口精细预测 (Local)
-                # --------------------------------------------------------------
-                prob_map_local = get_sliding_window_predictions(
+                # 直接调用包含腐蚀操作的单次预测函数
+                prob_map_final = get_single_prediction_with_erosion(
                     model,
                     class_text_embeddings,
                     image_tensor,
-                    img_size=args.img_size,
-                    stride=args.img_size // 2
-                )
-                if prob_map_local.shape != (orig_H, orig_W):
-                    prob_map_local = cv2.resize(prob_map_local, (orig_W, orig_H))
-
-                # --------------------------------------------------------------
-                # 步骤 2: 整图粗略预测 (Global)
-                # --------------------------------------------------------------
-                prob_map_global = get_global_prediction(
-                    model,
-                    class_text_embeddings,
-                    image_tensor,
+                    orig_H,
+                    orig_W,
                     img_size=args.img_size
                 )
-                if prob_map_global.shape != (orig_H, orig_W):
-                    prob_map_global = cv2.resize(prob_map_global, (orig_W, orig_H))
-
-                prob_map_final = np.sqrt(prob_map_local * prob_map_global)
 
                 all_preds.append(prob_map_final)
                 all_filenames.append(file_name)
@@ -356,7 +307,6 @@ def main():
         logger.info(f"Finished processing {class_name}")
 
     print("Done!")
-
 
 if __name__ == "__main__":
     main()
